@@ -1,5 +1,4 @@
 """Support for repeating alerts when conditions are met."""
-import asyncio
 from datetime import timedelta
 import logging
 
@@ -31,7 +30,6 @@ from homeassistant.util.dt import now
 _LOGGER = logging.getLogger(__name__)
 
 DOMAIN = "alert"
-ENTITY_ID_FORMAT = DOMAIN + ".{}"
 
 CONF_CAN_ACK = "can_acknowledge"
 CONF_NOTIFIERS = "notifiers"
@@ -145,9 +143,8 @@ async def async_setup(hass, config):
         DOMAIN, SERVICE_TOGGLE, async_handle_alert_service, schema=ALERT_SERVICE_SCHEMA
     )
 
-    tasks = [alert.async_update_ha_state() for alert in entities]
-    if tasks:
-        await asyncio.wait(tasks)
+    for alert in entities:
+        alert.async_write_ha_state()
 
     return True
 
@@ -200,7 +197,7 @@ class Alert(ToggleEntity):
         self._ack = False
         self._cancel = None
         self._send_done_message = False
-        self.entity_id = ENTITY_ID_FORMAT.format(entity_id)
+        self.entity_id = f"{DOMAIN}.{entity_id}"
 
         event.async_track_state_change(
             hass, watched_entity_id, self.watched_entity_change
@@ -250,7 +247,7 @@ class Alert(ToggleEntity):
         else:
             await self._schedule_notify()
 
-        self.async_schedule_update_ha_state()
+        self.async_write_ha_state()
 
     async def end_alerting(self):
         """End the alert procedures."""
@@ -260,7 +257,7 @@ class Alert(ToggleEntity):
         self._firing = False
         if self._send_done_message:
             await self._notify_done_message()
-        self.async_schedule_update_ha_state()
+        self.async_write_ha_state()
 
     async def _schedule_notify(self):
         """Schedule a notification."""
@@ -319,13 +316,13 @@ class Alert(ToggleEntity):
         """Async Unacknowledge alert."""
         _LOGGER.debug("Reset Alert: %s", self._name)
         self._ack = False
-        await self.async_update_ha_state()
+        self.async_write_ha_state()
 
     async def async_turn_off(self, **kwargs):
         """Async Acknowledge alert."""
         _LOGGER.debug("Acknowledged Alert: %s", self._name)
         self._ack = True
-        await self.async_update_ha_state()
+        self.async_write_ha_state()
 
     async def async_toggle(self, **kwargs):
         """Async toggle alert."""

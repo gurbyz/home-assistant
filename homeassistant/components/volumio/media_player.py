@@ -1,9 +1,6 @@
 """
 Volumio Platform.
 
-For more details about this platform, please refer to the documentation at
-https://home-assistant.io/components/media_player.volumio/
-
 Volumio rest API: https://volumio.github.io/docs/API/REST_API.html
 """
 import asyncio
@@ -82,7 +79,7 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
 async def async_setup_platform(hass, config, async_add_entities, discovery_info=None):
     """Set up the Volumio platform."""
     if DATA_VOLUMIO not in hass.data:
-        hass.data[DATA_VOLUMIO] = dict()
+        hass.data[DATA_VOLUMIO] = {}
 
     # This is a manual configuration?
     if discovery_info is None:
