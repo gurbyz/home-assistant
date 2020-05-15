@@ -5,21 +5,25 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     ATTR_ATTRIBUTION,
     CONF_DISKS,
-    CONF_NAME,
     DATA_MEGABYTES,
     DATA_RATE_KILOBYTES_PER_SECOND,
+    DATA_TERABYTES,
+    PRECISION_TENTHS,
     TEMP_CELSIUS,
 )
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity import Entity
+from homeassistant.helpers.temperature import display_temp
 from homeassistant.helpers.typing import HomeAssistantType
 
 from . import SynoApi
 from .const import (
+    BASE_NAME,
     CONF_VOLUMES,
     DOMAIN,
     STORAGE_DISK_SENSORS,
     STORAGE_VOL_SENSORS,
+    SYNO_API,
     TEMP_SENSORS_KEYS,
     UTILISATION_SENSORS,
 )
@@ -31,12 +35,11 @@ async def async_setup_entry(
     hass: HomeAssistantType, entry: ConfigEntry, async_add_entities
 ) -> None:
     """Set up the Synology NAS Sensor."""
-    name = entry.data[CONF_NAME]
 
-    api = hass.data[DOMAIN][entry.unique_id]
+    api = hass.data[DOMAIN][entry.unique_id][SYNO_API]
 
     sensors = [
-        SynoNasUtilSensor(api, name, sensor_type, UTILISATION_SENSORS[sensor_type])
+        SynoNasUtilSensor(api, sensor_type, UTILISATION_SENSORS[sensor_type])
         for sensor_type in UTILISATION_SENSORS
     ]
 
@@ -45,7 +48,7 @@ async def async_setup_entry(
         for volume in entry.data.get(CONF_VOLUMES, api.storage.volumes_ids):
             sensors += [
                 SynoNasStorageSensor(
-                    api, name, sensor_type, STORAGE_VOL_SENSORS[sensor_type], volume
+                    api, sensor_type, STORAGE_VOL_SENSORS[sensor_type], volume
                 )
                 for sensor_type in STORAGE_VOL_SENSORS
             ]
@@ -55,21 +58,20 @@ async def async_setup_entry(
         for disk in entry.data.get(CONF_DISKS, api.storage.disks_ids):
             sensors += [
                 SynoNasStorageSensor(
-                    api, name, sensor_type, STORAGE_DISK_SENSORS[sensor_type], disk
+                    api, sensor_type, STORAGE_DISK_SENSORS[sensor_type], disk
                 )
                 for sensor_type in STORAGE_DISK_SENSORS
             ]
 
-    async_add_entities(sensors, True)
+    async_add_entities(sensors)
 
 
 class SynoNasSensor(Entity):
-    """Representation of a Synology NAS Sensor."""
+    """Representation of a Synology NAS sensor."""
 
     def __init__(
         self,
         api: SynoApi,
-        name: str,
         sensor_type: str,
         sensor_info: Dict[str, str],
         monitored_device: str = None,
@@ -77,15 +79,15 @@ class SynoNasSensor(Entity):
         """Initialize the sensor."""
         self._api = api
         self.sensor_type = sensor_type
-        self._name = f"{name} {sensor_info[0]}"
+        self._name = f"{BASE_NAME} {sensor_info[0]}"
         self._unit = sensor_info[1]
         self._icon = sensor_info[2]
         self.monitored_device = monitored_device
+        self._unique_id = f"{self._api.information.serial}_{sensor_info[0]}"
 
         if self.monitored_device:
-            self._name = f"{self._name} ({self.monitored_device})"
-
-        self._unique_id = f"{self._api.information.serial} {self._name}"
+            self._name += f" ({self.monitored_device})"
+            self._unique_id += f"_{self.monitored_device}"
 
         self._unsub_dispatcher = None
 
@@ -108,7 +110,7 @@ class SynoNasSensor(Entity):
     def unit_of_measurement(self) -> str:
         """Return the unit the value is expressed in."""
         if self.sensor_type in TEMP_SENSORS_KEYS:
-            return self._api.temp_unit
+            return self.hass.config.units.temperature_unit
         return self._unit
 
     @property
@@ -132,6 +134,10 @@ class SynoNasSensor(Entity):
         """No polling needed."""
         return False
 
+    async def async_update(self):
+        """Only used by the generic entity update service."""
+        await self._api.update()
+
     async def async_added_to_hass(self):
         """Register state update callback."""
         self._unsub_dispatcher = async_dispatcher_connect(
@@ -144,47 +150,47 @@ class SynoNasSensor(Entity):
 
 
 class SynoNasUtilSensor(SynoNasSensor):
-    """Representation a Synology Utilisation Sensor."""
+    """Representation a Synology Utilisation sensor."""
 
     @property
     def state(self):
         """Return the state."""
-        if self._unit == DATA_RATE_KILOBYTES_PER_SECOND or self._unit == DATA_MEGABYTES:
-            attr = getattr(self._api.utilisation, self.sensor_type)(False)
+        attr = getattr(self._api.utilisation, self.sensor_type)
+        if callable(attr):
+            attr = attr()
+        if attr is None:
+            return None
 
-            if attr is None:
-                return None
+        # Data (RAM)
+        if self._unit == DATA_MEGABYTES:
+            return round(attr / 1024.0 ** 2, 1)
 
-            if self._unit == DATA_RATE_KILOBYTES_PER_SECOND:
-                return round(attr / 1024.0, 1)
-            if self._unit == DATA_MEGABYTES:
-                return round(attr / 1024.0 / 1024.0, 1)
-        else:
-            return getattr(self._api.utilisation, self.sensor_type)
+        # Network
+        if self._unit == DATA_RATE_KILOBYTES_PER_SECOND:
+            return round(attr / 1024.0, 1)
+
+        return attr
 
 
 class SynoNasStorageSensor(SynoNasSensor):
-    """Representation a Synology Storage Sensor."""
+    """Representation a Synology Storage sensor."""
 
     @property
     def state(self):
         """Return the state."""
-        if self.monitored_device:
-            if self.sensor_type in TEMP_SENSORS_KEYS:
-                attr = getattr(self._api.storage, self.sensor_type)(
-                    self.monitored_device
-                )
+        attr = getattr(self._api.storage, self.sensor_type)(self.monitored_device)
+        if attr is None:
+            return None
 
-                if attr is None:
-                    return None
+        # Data (disk space)
+        if self._unit == DATA_TERABYTES:
+            return round(attr / 1024.0 ** 4, 2)
 
-                if self._api.temp_unit == TEMP_CELSIUS:
-                    return attr
+        # Temperature
+        if self.sensor_type in TEMP_SENSORS_KEYS:
+            return display_temp(self.hass, attr, TEMP_CELSIUS, PRECISION_TENTHS)
 
-                return round(attr * 1.8 + 32.0, 1)
-
-            return getattr(self._api.storage, self.sensor_type)(self.monitored_device)
-        return None
+        return attr
 
     @property
     def device_info(self) -> Dict[str, any]:

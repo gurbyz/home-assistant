@@ -10,8 +10,8 @@ ZEROCONF = {
         "axis",
         "doorbird"
     ],
-    "_coap._udp.local.": [
-        "tradfri"
+    "_daap._tcp.local.": [
+        "forked_daapd"
     ],
     "_elg._tcp.local.": [
         "elgato"
@@ -31,6 +31,9 @@ ZEROCONF = {
     "_ipps._tcp.local.": [
         "ipp"
     ],
+    "_miio._udp.local.": [
+        "xiaomi_miio"
+    ],
     "_printer._tcp.local.": [
         "brother"
     ],
@@ -47,13 +50,16 @@ ZEROCONF = {
 
 HOMEKIT = {
     "819LMB": "myq",
+    "AC02": "tado",
     "BSB002": "hue",
     "Healty Home Coach": "netatmo",
     "LIFX": "lifx",
     "Netatmo Relay": "netatmo",
+    "PowerView": "hunterdouglas_powerview",
     "Presence": "netatmo",
     "Rachio": "rachio",
     "TRADFRI": "tradfri",
     "Welcome": "netatmo",
-    "Wemo": "wemo"
+    "Wemo": "wemo",
+    "tado": "tado"
 }

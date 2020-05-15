@@ -2,7 +2,10 @@
 import logging
 
 from homeassistant.core import callback
-from homeassistant.helpers.dispatcher import async_dispatcher_connect, dispatcher_send
+from homeassistant.helpers.dispatcher import (
+    async_dispatcher_connect,
+    async_dispatcher_send,
+)
 from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.event import async_call_later
 
@@ -58,7 +61,7 @@ class PlexSensor(Entity):
 
         @callback
         def update_plex(_):
-            dispatcher_send(
+            async_dispatcher_send(
                 self.hass,
                 PLEX_UPDATE_PLATFORMS_SIGNAL.format(self._server.machine_identifier),
             )
@@ -82,11 +85,16 @@ class PlexSensor(Entity):
             if sess.TYPE in ["clip", "episode"]:
                 # example:
                 # "Supernatural (2005) - s01e13 - Route 666"
+
+                def sync_io_attributes(session):
+                    return (session.show(), session.seasonEpisode)
+
+                show, season_episode = await self.hass.async_add_executor_job(
+                    sync_io_attributes, sess
+                )
                 season_title = sess.grandparentTitle
-                show = await self.hass.async_add_executor_job(sess.show)
                 if show.year is not None:
                     season_title += f" ({show.year!s})"
-                season_episode = sess.seasonEpisode
                 episode_title = sess.title
                 now_playing_title = (
                     f"{season_title} - {season_episode} - {episode_title}"

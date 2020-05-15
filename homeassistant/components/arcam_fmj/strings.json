@@ -1,5 +1,7 @@
 {
-  "config": {
-    "title": "Arcam FMJ"
-  }
+    "device_automation": {
+        "trigger_type": {
+            "turn_on": "{entity_name} was requested to turn on"
+        }
+    }
 }
