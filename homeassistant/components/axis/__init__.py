@@ -7,7 +7,7 @@ from homeassistant.const import CONF_DEVICE, EVENT_HOMEASSISTANT_STOP
 from .const import DOMAIN as AXIS_DOMAIN
 from .device import AxisNetworkDevice
 
-LOGGER = logging.getLogger(__name__)
+_LOGGER = logging.getLogger(__name__)
 
 
 async def async_setup(hass, config):
@@ -27,7 +27,7 @@ async def async_setup_entry(hass, config_entry):
     # 0.104 introduced config entry unique id, this makes upgrading possible
     if config_entry.unique_id is None:
         hass.config_entries.async_update_entry(
-            config_entry, unique_id=device.api.vapix.params.system_serialnumber
+            config_entry, unique_id=device.api.vapix.serial_number
         )
 
     hass.data[AXIS_DOMAIN][config_entry.unique_id] = device
@@ -47,14 +47,14 @@ async def async_unload_entry(hass, config_entry):
 
 async def async_migrate_entry(hass, config_entry):
     """Migrate old entry."""
-    LOGGER.debug("Migrating from version %s", config_entry.version)
+    _LOGGER.debug("Migrating from version %s", config_entry.version)
 
-    #  Flatten configuration but keep old data if user rollbacks HASS
+    #  Flatten configuration but keep old data if user rollbacks HASS prior to 0.106
     if config_entry.version == 1:
         config_entry.data = {**config_entry.data, **config_entry.data[CONF_DEVICE]}
 
         config_entry.version = 2
 
-    LOGGER.info("Migration to version %s successful", config_entry.version)
+    _LOGGER.info("Migration to version %s successful", config_entry.version)
 
     return True

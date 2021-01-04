@@ -3,7 +3,7 @@ import logging
 
 import voluptuous as vol
 
-from homeassistant.components import climate, mqtt
+from homeassistant.components import climate
 from homeassistant.components.climate import (
     PLATFORM_SCHEMA as CLIMATE_PLATFORM_SCHEMA,
     ClimateEntity,
@@ -38,6 +38,7 @@ from homeassistant.const import (
     CONF_DEVICE,
     CONF_NAME,
     CONF_TEMPERATURE_UNIT,
+    CONF_UNIQUE_ID,
     CONF_VALUE_TEMPLATE,
     PRECISION_HALVES,
     PRECISION_TENTHS,
@@ -46,23 +47,29 @@ from homeassistant.const import (
 )
 from homeassistant.core import callback
 import homeassistant.helpers.config_validation as cv
-from homeassistant.helpers.dispatcher import async_dispatcher_connect
+from homeassistant.helpers.dispatcher import (
+    async_dispatcher_connect,
+    async_dispatcher_send,
+)
+from homeassistant.helpers.reload import async_setup_reload_service
 from homeassistant.helpers.typing import ConfigType, HomeAssistantType
 
 from . import (
     ATTR_DISCOVERY_HASH,
     CONF_QOS,
     CONF_RETAIN,
-    CONF_UNIQUE_ID,
+    DOMAIN,
     MQTT_BASE_PLATFORM_SCHEMA,
+    PLATFORMS,
     MqttAttributes,
     MqttAvailability,
     MqttDiscoveryUpdate,
     MqttEntityDeviceInfo,
     subscription,
 )
+from .. import mqtt
 from .debug_info import log_messages
-from .discovery import MQTT_DISCOVERY_NEW, clear_discovery_hash
+from .discovery import MQTT_DISCOVERY_DONE, MQTT_DISCOVERY_NEW, clear_discovery_hash
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -170,7 +177,8 @@ PLATFORM_SCHEMA = (
             vol.Optional(CONF_DEVICE): mqtt.MQTT_ENTITY_DEVICE_INFO_SCHEMA,
             vol.Optional(CONF_FAN_MODE_COMMAND_TOPIC): mqtt.valid_publish_topic,
             vol.Optional(
-                CONF_FAN_MODE_LIST, default=[FAN_AUTO, FAN_LOW, FAN_MEDIUM, FAN_HIGH],
+                CONF_FAN_MODE_LIST,
+                default=[FAN_AUTO, FAN_LOW, FAN_MEDIUM, FAN_HIGH],
             ): cv.ensure_list,
             vol.Optional(CONF_FAN_MODE_STATE_TEMPLATE): cv.template,
             vol.Optional(CONF_FAN_MODE_STATE_TOPIC): mqtt.valid_subscribe_topic,
@@ -238,6 +246,7 @@ async def async_setup_platform(
     hass: HomeAssistantType, config: ConfigType, async_add_entities, discovery_info=None
 ):
     """Set up MQTT climate device through configuration.yaml."""
+    await async_setup_reload_service(hass, DOMAIN, PLATFORMS)
     await _async_setup_entity(hass, config, async_add_entities)
 
 
@@ -253,7 +262,11 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
                 hass, config, async_add_entities, config_entry, discovery_data
             )
         except Exception:
-            clear_discovery_hash(hass, discovery_data[ATTR_DISCOVERY_HASH])
+            discovery_hash = discovery_data[ATTR_DISCOVERY_HASH]
+            clear_discovery_hash(hass, discovery_hash)
+            async_dispatcher_send(
+                hass, MQTT_DISCOVERY_DONE.format(discovery_hash), None
+            )
             raise
 
     async_dispatcher_connect(
@@ -635,7 +648,7 @@ class MqttClimate(
             return self._hold
         if self._away:
             return PRESET_AWAY
-        return None
+        return PRESET_NONE
 
     @property
     def preset_modes(self):

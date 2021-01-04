@@ -1,5 +1,7 @@
 """Test the iRobot Roomba config flow."""
-from roomba import RoombaConnectionError
+from unittest.mock import MagicMock, PropertyMock, patch
+
+from roombapy import RoombaConnectionError
 
 from homeassistant import config_entries, data_entry_flow, setup
 from homeassistant.components.roomba.const import (
@@ -10,7 +12,6 @@ from homeassistant.components.roomba.const import (
 )
 from homeassistant.const import CONF_HOST, CONF_PASSWORD
 
-from tests.async_mock import MagicMock, PropertyMock, patch
 from tests.common import MockConfigEntry
 
 VALID_CONFIG = {CONF_HOST: "1.2.3.4", CONF_BLID: "blid", CONF_PASSWORD: "password"}
@@ -55,11 +56,14 @@ async def test_form(hass):
     ), patch(
         "homeassistant.components.roomba.async_setup", return_value=True
     ) as mock_setup, patch(
-        "homeassistant.components.roomba.async_setup_entry", return_value=True,
+        "homeassistant.components.roomba.async_setup_entry",
+        return_value=True,
     ) as mock_setup_entry:
         result2 = await hass.config_entries.flow.async_configure(
-            result["flow_id"], VALID_CONFIG,
+            result["flow_id"],
+            VALID_CONFIG,
         )
+        await hass.async_block_till_done()
 
     assert result2["type"] == data_entry_flow.RESULT_TYPE_CREATE_ENTRY
     assert result2["title"] == "myroomba"
@@ -72,7 +76,6 @@ async def test_form(hass):
         CONF_HOST: "1.2.3.4",
         CONF_PASSWORD: "password",
     }
-    await hass.async_block_till_done()
     assert len(mock_setup.mock_calls) == 1
     assert len(mock_setup_entry.mock_calls) == 1
 
@@ -94,7 +97,8 @@ async def test_form_cannot_connect(hass):
         return_value=mocked_roomba,
     ):
         result2 = await hass.config_entries.flow.async_configure(
-            result["flow_id"], VALID_CONFIG,
+            result["flow_id"],
+            VALID_CONFIG,
         )
 
     assert result2["type"] == data_entry_flow.RESULT_TYPE_FORM
@@ -115,13 +119,15 @@ async def test_form_import(hass):
     ), patch(
         "homeassistant.components.roomba.async_setup", return_value=True
     ) as mock_setup, patch(
-        "homeassistant.components.roomba.async_setup_entry", return_value=True,
+        "homeassistant.components.roomba.async_setup_entry",
+        return_value=True,
     ) as mock_setup_entry:
         result = await hass.config_entries.flow.async_init(
             DOMAIN,
             context={"source": config_entries.SOURCE_IMPORT},
             data=VALID_YAML_CONFIG.copy(),
         )
+        await hass.async_block_till_done()
 
     assert result["type"] == data_entry_flow.RESULT_TYPE_CREATE_ENTRY
     assert result["result"].unique_id == "blid"
@@ -134,7 +140,6 @@ async def test_form_import(hass):
         CONF_PASSWORD: "password",
     }
 
-    await hass.async_block_till_done()
     assert len(mock_setup.mock_calls) == 1
     assert len(mock_setup_entry.mock_calls) == 1
 
